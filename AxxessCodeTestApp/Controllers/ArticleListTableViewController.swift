@@ -8,6 +8,7 @@
 
 import UIKit
 import CoreData
+import SnapKit
 
 class ArticleListTableViewController: UITableViewController {
   
@@ -23,22 +24,51 @@ class ArticleListTableViewController: UITableViewController {
   private func setup() {
     self.title = "Axxess Code Test"
     self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: "ArticleTableViewCellIdentifier")
+    
+    let activityIndicator = UIActivityIndicatorView()
+    activityIndicator.color = .gray
+    self.view.addSubview(activityIndicator)
+    
+    activityIndicator.snp.makeConstraints { (make) in
+      make.centerX.equalTo(self.view.snp.centerX)
+      make.centerY.equalTo(self.view.snp.centerY)
+    }
+    if !Connectivity.isConnectedToInternet() {
+      if !fetchArticles()
+      {
+        let alert = UIAlertController(title: nil, message: "Please check your internet connectivitiy.", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Ok", style: .default, handler: nil))
+        self.present(alert, animated: true)
+      } else {
+        self.tableView.reloadData()
+      }
+      return
+    }
+    activityIndicator.startAnimating()
     Webservice().getArticles { [weak self] (responseArticles, error) in
-      if let articles = responseArticles {
-//        DispatchQueue.main.async {
-//          self?.prepareToSaveArticleToCD(articles)
-//        }
-        var allArticles: [Articles] = []
-        let allArticleType = Set(articles.compactMap({ $0.type }))
-        for item in allArticleType {
-          let typeArticles = articles.filter({ $0.type == item})
-          allArticles.append(typeArticles)
-        }
-        self?.articleListVM = ArticleListViewModel(articles: allArticles)
-      }
       DispatchQueue.main.async {
-        self?.tableView.reloadData()
+        activityIndicator.stopAnimating()
       }
+      if let articles = responseArticles {
+        DispatchQueue.main.async {
+          self?.clearStorage()
+        }
+        self?.formatToDisplayArticle(articles)
+      }//cnbd
+    }
+  }
+  
+  private func formatToDisplayArticle(_ articles: Articles) {
+    var allArticles: [Articles] = []
+    let allArticleType = Set(articles.compactMap({ $0.type }))
+    for item in allArticleType {
+      let typeArticles = articles.filter({ $0.type == item})
+      allArticles.append(typeArticles)
+    }
+    self.articleListVM = ArticleListViewModel(articles: allArticles)
+    DispatchQueue.main.async {
+      self.tableView.reloadData()
+      self.prepareToSaveArticleToCD(articles)
     }
   }
   
@@ -99,16 +129,43 @@ extension ArticleListTableViewController {
 }
 
 extension ArticleListTableViewController {
-  func fetchArticles() {
+  func fetchArticles() -> Bool {
+    var isArticlesAvialable = false
+    var articles: Articles = []
     let request = NSFetchRequest<NSFetchRequestResult>(entityName: "ArticleEntity")
+    let sortDescriptor = NSSortDescriptor(key: "type", ascending: true)
+    request.sortDescriptors = [sortDescriptor]
     request.returnsObjectsAsFaults = false
     do {
-      let result = try appdelegate.persistentContainer.viewContext.fetch(request)
-      for data in result as! [NSManagedObject] {
-        
+      let records = try appdelegate.persistentContainer.viewContext.fetch(request)
+      if records.count > 0 {
+        isArticlesAvialable = true
+        for record in records as! [NSManagedObject] {
+          if let id = record.value(forKey: "id") as? String, let type = record.value(forKey: "type") as? String {
+            let data = record.value(forKey: "data") as? String
+            let date = record.value(forKey: "date") as? String
+            let article = Article(id: id, type: type, date: date, data: data)
+            articles.append(article)
+          }
+        }
+        self.formatToDisplayArticle(articles)
       }
     } catch {
       print("Fetching data Failed")
     }
+    return isArticlesAvialable
+  }
+}
+
+extension ArticleListTableViewController {
+  func clearStorage() {
+    let managedObjectContext = appdelegate.persistentContainer.viewContext
+      let fetchRequest = NSFetchRequest<NSFetchRequestResult>(entityName:"ArticleEntity")
+      let batchDeleteRequest = NSBatchDeleteRequest(fetchRequest: fetchRequest)
+      do {
+          try managedObjectContext.execute(batchDeleteRequest)
+      } catch let error as NSError {
+          print(error)
+      }
   }
 }

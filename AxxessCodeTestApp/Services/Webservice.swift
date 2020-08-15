@@ -36,3 +36,9 @@ class Webservice {
     }
   }
 }
+
+class Connectivity {
+    class func isConnectedToInternet() -> Bool {
+        return NetworkReachabilityManager()!.isReachable
+    }
+}

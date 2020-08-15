@@ -66,6 +66,12 @@ class ArticleDetailViewController: UIViewController {
     if let imagePath = article.data, let url = URL(string: imagePath) {
       imageView.sd_setImage(with: url, placeholderImage: nil, options: []) { (image, error, _, url) in
         indicator.stopAnimating()
+        if error != nil {
+          let alert = UIAlertController(title: nil, message: "Failed to download image", preferredStyle: .alert)
+          alert.addAction(UIAlertAction(title: "Ok", style: .default, handler: nil))
+          self.present(alert, animated: true)
+          return
+        }
         if image != nil {
           imageView.image = image
         }
